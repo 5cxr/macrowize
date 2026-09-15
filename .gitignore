@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local SQLite database -- personal log data, never committed
+*.db
+
+.env
+.DS_Store
