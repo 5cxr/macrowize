@@ -5,7 +5,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 PROJECT_ROOT = Path(__file__).resolve().parent
+
+# Keys live in .env (gitignored). Real environment variables win over the file.
+load_dotenv(PROJECT_ROOT / ".env")
 
 DB_PATH = Path(os.getenv("MACROWIZE_DB", PROJECT_ROOT / "macrowize.db"))
 DATABASE_URL = f"sqlite:///{DB_PATH}"
