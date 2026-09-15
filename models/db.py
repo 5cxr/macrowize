@@ -10,7 +10,7 @@ against the previous day.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Iterator
 
 from sqlalchemy import JSON, DateTime, Float, Integer, String, create_engine, func, select
@@ -203,13 +203,69 @@ def clear_chat_history(session: Session) -> int:
     return int(count)
 
 
-def get_meals_for_day(session: Session, day: date | None = None) -> list[MealLog]:
-    """Return every meal logged on `day`, oldest first."""
+def get_meals_for_day(session: Session, day: date | None = None) -> list[dict[str, Any]]:
+    """Return every meal logged on `day`, oldest first.
+
+    Plain dicts, not ORM rows: callers routinely read these after the session has
+    closed, and a detached row raises on attribute access.
+    """
     day = day or date.today()
-    return list(
-        session.scalars(
-            select(MealLog)
-            .where(func.date(MealLog.timestamp) == day.isoformat())
-            .order_by(MealLog.timestamp)
-        )
+    rows = session.scalars(
+        select(MealLog)
+        .where(func.date(MealLog.timestamp) == day.isoformat())
+        .order_by(MealLog.timestamp)
     )
+    return [
+        {
+            "id": meal.id,
+            "timestamp": meal.timestamp,
+            "time": meal.timestamp.strftime("%H:%M"),
+            "raw_text": meal.raw_text,
+            "items": meal.items,
+            "total_kcal": meal.total_kcal,
+            "total_protein_g": meal.total_protein_g,
+        }
+        for meal in rows
+    ]
+
+
+def delete_meal(session: Session, meal_id: int) -> bool:
+    """Delete one logged meal. Returns False if it was already gone."""
+    meal = session.get(MealLog, meal_id)
+    if meal is None:
+        return False
+    session.delete(meal)
+    session.flush()
+    return True
+
+
+def get_daily_history(session: Session, days: int = 7) -> list[dict[str, Any]]:
+    """Per-day totals for the last `days` calendar days, newest first.
+
+    One GROUP BY rather than a query per day. Days with nothing logged are
+    included as zeros so gaps are visible instead of silently collapsed.
+    """
+    day_column = func.date(MealLog.timestamp)
+    rows = session.execute(
+        select(
+            day_column,
+            func.sum(MealLog.total_kcal),
+            func.sum(MealLog.total_protein_g),
+            func.count(MealLog.id),
+        )
+        .group_by(day_column)
+        .order_by(day_column.desc())
+    ).all()
+
+    totals = {
+        row[0]: {"kcal": float(row[1]), "protein_g": float(row[2]), "meals": int(row[3])}
+        for row in rows
+    }
+
+    today = date.today()
+    history = []
+    for offset in range(days):
+        day = today - timedelta(days=offset)
+        entry = totals.get(day.isoformat(), {"kcal": 0.0, "protein_g": 0.0, "meals": 0})
+        history.append({"date": day, **entry})
+    return history

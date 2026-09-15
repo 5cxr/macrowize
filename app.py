@@ -14,7 +14,9 @@ from graph import build_graph
 from llm import LLMUnavailableError
 from models.db import (
     clear_chat_history,
+    delete_meal,
     get_chat_history,
+    get_daily_history,
     get_daily_tally,
     get_meals_for_day,
     get_profile,
@@ -145,16 +147,7 @@ def render_dashboard() -> None:
     profile = st.session_state.profile
     with session_scope() as session:
         kcal, protein = get_daily_tally(session)
-        # Read the fields out while the session is open -- these rows are detached
-        # the moment it closes, and touching an attribute afterwards raises.
-        meals = [
-            {
-                "time": meal.timestamp.strftime("%H:%M"),
-                "raw_text": meal.raw_text,
-                "total_kcal": meal.total_kcal,
-            }
-            for meal in get_meals_for_day(session)
-        ]
+        meals = get_meals_for_day(session)
 
     st.sidebar.subheader("Today")
 
@@ -183,6 +176,8 @@ def render_dashboard() -> None:
     )
 
     if meals:
+        # Read-only here. Deleting lives in the History view, where each meal gets
+        # a full-width row instead of a cramped icon button.
         with st.sidebar.expander(f"{len(meals)} meal(s) logged"):
             for meal in meals:
                 st.caption(
@@ -299,13 +294,86 @@ def handle_input(text: str) -> None:
     finish_turn(result)
 
 
-def main() -> None:
-    init_session()
+def render_meal_row(meal: dict, key_prefix: str) -> None:
+    """One logged meal with a two-step delete. Deleting is not undoable."""
+    pending_key = f"confirm_delete_{meal['id']}"
+    label = (
+        f"{meal['time']} — {meal['raw_text']} "
+        f"({meal['total_kcal']:.0f} kcal, {meal['total_protein_g']:.0f}g protein)"
+    )
 
-    st.sidebar.title("macrowize")
-    render_profile_form()
-    render_dashboard()
+    if st.session_state.get(pending_key):
+        st.warning(f"Delete this permanently?  \n{label}")
+        confirm, cancel, _ = st.columns([1, 1, 3])
+        if confirm.button("Delete", key=f"{key_prefix}_yes_{meal['id']}", type="primary"):
+            with session_scope() as session:
+                delete_meal(session, meal["id"])
+            st.session_state.pop(pending_key, None)
+            st.rerun()
+        if cancel.button("Keep", key=f"{key_prefix}_no_{meal['id']}"):
+            st.session_state.pop(pending_key, None)
+            st.rerun()
+        return
 
+    text, button = st.columns([4, 1])
+    text.markdown(label)
+    if button.button("Delete", key=f"{key_prefix}_del_{meal['id']}"):
+        st.session_state[pending_key] = True
+        st.rerun()
+
+
+def render_history() -> None:
+    """Multi-day view: per-day totals against target, expandable to the meals."""
+    profile = st.session_state.profile
+    st.title("History")
+
+    days = st.selectbox("Range", [7, 14, 30], format_func=lambda d: f"Last {d} days")
+
+    with session_scope() as session:
+        history = get_daily_history(session, days=days)
+        meals_by_day = {
+            entry["date"]: get_meals_for_day(session, entry["date"])
+            for entry in history
+            if entry["meals"]
+        }
+
+    logged = [entry for entry in history if entry["meals"]]
+    if not logged:
+        st.info("Nothing logged in this range yet.")
+        return
+
+    target_kcal = profile["target_kcal"] if profile else None
+    average = sum(entry["kcal"] for entry in logged) / len(logged)
+    left, right = st.columns(2)
+    left.metric("Days logged", f"{len(logged)} of {days}")
+    right.metric(
+        "Average kcal on those days",
+        f"{average:.0f}",
+        delta=f"{average - target_kcal:+.0f} vs target" if target_kcal else None,
+        delta_color="off",
+    )
+
+    for entry in history:
+        day_label = entry["date"].strftime("%a %d %b")
+        if not entry["meals"]:
+            st.caption(f"**{day_label}** — nothing logged")
+            continue
+
+        headline = f"**{day_label}** — {entry['kcal']:.0f} kcal, {entry['protein_g']:.0f}g protein"
+        if target_kcal:
+            headline += f"  ({entry['kcal'] - target_kcal:+.0f})"
+        st.markdown(headline)
+        if target_kcal:
+            st.progress(min(entry["kcal"] / target_kcal, 1.0))
+
+        with st.expander(f"{entry['meals']} meal(s)"):
+            for meal in meals_by_day[entry["date"]]:
+                render_meal_row(meal, key_prefix="hist")
+        st.divider()
+
+
+def render_chat() -> None:
+    """Chat transcript, the pending confirmation, and the input box."""
     st.title("What did you eat?")
 
     for role, content in st.session_state.history:
@@ -318,6 +386,20 @@ def main() -> None:
 
     if prompt := st.chat_input("e.g. 2 rotis and a bowl of dal"):
         handle_input(prompt)
+
+
+def main() -> None:
+    init_session()
+
+    st.sidebar.title("macrowize")
+    view = st.sidebar.radio("View", ["Chat", "History"], horizontal=True, key="view")
+    render_profile_form()
+    render_dashboard()
+
+    if view == "History":
+        render_history()
+    else:
+        render_chat()
 
 
 if __name__ == "__main__":

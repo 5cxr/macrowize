@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 import pytest
 from streamlit.testing.v1 import AppTest
 
@@ -9,6 +11,11 @@ from config import PROJECT_ROOT
 from models.db import Base, MealLog, SessionLocal, engine, get_profile, save_meal
 
 APP_PATH = str(PROJECT_ROOT / "app.py")
+
+ROTI_ITEM = {
+    "food_name": "roti", "quantity": 2, "unit": "piece",
+    "kcal": 211.2, "protein_g": 7.7, "carbs_g": 41.6, "fat_g": 2.0,
+}
 
 
 @pytest.fixture
@@ -67,14 +74,7 @@ def test_dashboard_shows_progress_against_targets(fresh_db) -> None:
 
 def test_logged_meals_move_the_tally(fresh_db) -> None:
     with SessionLocal() as session:
-        save_meal(
-            session,
-            raw_text="2 rotis",
-            items=[{
-                "food_name": "roti", "quantity": 2, "unit": "piece",
-                "kcal": 211.2, "protein_g": 7.7, "carbs_g": 41.6, "fat_g": 2.0,
-            }],
-        )
+        save_meal(session, raw_text="2 rotis", items=[ROTI_ITEM])
         session.commit()
 
     app = run_app()
@@ -212,6 +212,85 @@ def test_unconfirmed_summary_is_not_persisted(fresh_db, monkeypatch) -> None:
     assert not any("look right" in block.value for block in reloaded.markdown)
     with SessionLocal() as session:
         assert session.query(MealLog).count() == 0
+
+
+def test_history_view_lists_days_with_and_without_meals(fresh_db) -> None:
+    with SessionLocal() as session:
+        save_meal(session, raw_text="2 rotis today", items=[ROTI_ITEM])
+        save_meal(
+            session, raw_text="dal two days ago", items=[ROTI_ITEM],
+            timestamp=datetime.now() - timedelta(days=2),
+        )
+        session.commit()
+
+    app = _fill_profile(run_app())
+    app.radio(key="view").set_value("History").run()
+
+    assert not app.exception
+    assert "History" in " ".join(h.value for h in app.title)
+    captions = " ".join(block.value for block in app.caption)
+    assert "nothing logged" in captions, "empty days should be visible, not skipped"
+    assert any("2 of 7" in m.value for m in app.metric), "days-logged metric"
+
+
+def test_history_view_is_empty_when_nothing_logged(fresh_db) -> None:
+    app = _fill_profile(run_app())
+    app.radio(key="view").set_value("History").run()
+
+    assert not app.exception
+    assert any("Nothing logged" in info.value for info in app.info)
+
+
+def _open_history(app: AppTest) -> AppTest:
+    return app.radio(key="view").set_value("History").run()
+
+
+def test_deleting_a_meal_takes_two_clicks(fresh_db) -> None:
+    with SessionLocal() as session:
+        save_meal(session, raw_text="2 rotis", items=[ROTI_ITEM])
+        session.commit()
+
+    app = _open_history(_fill_profile(run_app()))
+
+    # First click only arms the confirmation.
+    next(b for b in app.button if b.label == "Delete").click().run()
+    with SessionLocal() as session:
+        assert session.query(MealLog).count() == 1, "one click must not delete"
+    assert any("permanently" in w.value for w in app.warning)
+
+    next(b for b in app.button if b.label == "Delete").click().run()
+    with SessionLocal() as session:
+        assert session.query(MealLog).count() == 0
+
+
+def test_keeping_a_meal_cancels_the_delete(fresh_db) -> None:
+    with SessionLocal() as session:
+        save_meal(session, raw_text="2 rotis", items=[ROTI_ITEM])
+        session.commit()
+
+    app = _open_history(_fill_profile(run_app()))
+    next(b for b in app.button if b.label == "Delete").click().run()
+    next(b for b in app.button if b.label == "Keep").click().run()
+
+    assert not app.exception
+    with SessionLocal() as session:
+        assert session.query(MealLog).count() == 1
+
+
+def test_deleting_a_meal_updates_the_dashboard(fresh_db) -> None:
+    with SessionLocal() as session:
+        save_meal(session, raw_text="2 rotis", items=[ROTI_ITEM])
+        session.commit()
+
+    app = _open_history(_fill_profile(run_app()))
+    assert "**211**" in " ".join(b.value for b in app.sidebar.markdown)
+
+    next(b for b in app.button if b.label == "Delete").click().run()
+    next(b for b in app.button if b.label == "Delete").click().run()
+
+    markdown = " ".join(b.value for b in app.sidebar.markdown)
+    assert "**0**" in markdown
+    assert "`+2178` left" in markdown
 
 
 def test_nothing_is_written_to_the_db_by_merely_chatting(fresh_db, monkeypatch) -> None:

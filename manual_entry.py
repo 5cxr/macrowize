@@ -130,8 +130,8 @@ def print_today() -> None:
         print(f"Today: {len(meals)} meal(s) logged")
         for meal in meals:
             print(
-                f"  [{meal.timestamp:%H:%M}] {meal.raw_text}"
-                f"  -> {meal.total_kcal:.0f} kcal / {meal.total_protein_g:.1f} g"
+                f"  [{meal['time']}] {meal['raw_text']}"
+                f"  -> {meal['total_kcal']:.0f} kcal / {meal['total_protein_g']:.1f} g"
             )
 
         if profile is None:

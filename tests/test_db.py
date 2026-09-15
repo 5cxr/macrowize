@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
+import pytest
+
 from models.db import (
     clear_chat_history,
+    delete_meal,
     get_chat_history,
+    get_daily_history,
     get_daily_tally,
     get_meals_for_day,
     get_profile,
@@ -43,8 +47,8 @@ def test_items_survive_the_json_round_trip(session) -> None:
     session.expunge_all()
 
     stored = get_meals_for_day(session)[0]
-    assert stored.items[0]["food_name"] == "roti"
-    assert stored.items[0]["unit"] == "piece"
+    assert stored["items"][0]["food_name"] == "roti"
+    assert stored["items"][0]["unit"] == "piece"
 
 
 def test_daily_tally_sums_every_meal_that_day(session) -> None:
@@ -96,6 +100,59 @@ def test_profile_is_a_single_upserted_row(session) -> None:
 
 def test_get_profile_returns_none_before_onboarding(session) -> None:
     assert get_profile(session) is None
+
+
+def test_deleting_a_meal_removes_it_from_the_tally(session) -> None:
+    breakfast = save_meal(session, raw_text="2 rotis", items=[ROTI])
+    save_meal(session, raw_text="dal", items=[DAL])
+    session.commit()
+    assert get_daily_tally(session) == (420.0, 18.4)
+
+    assert delete_meal(session, breakfast.id) is True
+    session.commit()
+
+    assert get_daily_tally(session) == (180.0, 12.0)
+    assert len(get_meals_for_day(session)) == 1
+
+
+def test_deleting_a_missing_meal_reports_false(session) -> None:
+    assert delete_meal(session, 9999) is False
+
+
+def test_history_covers_requested_days_including_empty_ones(session) -> None:
+    today = datetime.now()
+    save_meal(session, raw_text="today", items=[ROTI])
+    save_meal(session, raw_text="two days ago", items=[DAL],
+              timestamp=today - timedelta(days=2))
+    session.commit()
+
+    history = get_daily_history(session, days=5)
+
+    assert len(history) == 5, "empty days are included, not collapsed"
+    assert history[0]["date"] == date.today(), "newest first"
+    assert history[0]["kcal"] == 240.0
+    assert history[1]["meals"] == 0, "yesterday had nothing logged"
+    assert history[2]["kcal"] == 180.0
+
+
+def test_history_sums_multiple_meals_per_day(session) -> None:
+    save_meal(session, raw_text="breakfast", items=[ROTI])
+    save_meal(session, raw_text="lunch", items=[DAL])
+    session.commit()
+
+    today_entry = get_daily_history(session, days=3)[0]
+    assert today_entry["meals"] == 2
+    assert today_entry["kcal"] == 420.0
+    assert today_entry["protein_g"] == pytest.approx(18.4)
+
+
+def test_history_ignores_days_outside_the_window(session) -> None:
+    save_meal(session, raw_text="ancient", items=[ROTI],
+              timestamp=datetime.now() - timedelta(days=30))
+    session.commit()
+
+    history = get_daily_history(session, days=7)
+    assert all(entry["meals"] == 0 for entry in history)
 
 
 def test_chat_history_round_trips_in_order(session) -> None:
