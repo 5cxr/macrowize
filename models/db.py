@@ -56,6 +56,17 @@ class MealLog(Base):
     total_protein_g: Mapped[float] = mapped_column(Float)
 
 
+class ChatMessage(Base):
+    """One turn of the conversation, so a page reload doesn't wipe the transcript."""
+
+    __tablename__ = "chat_message"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+    role: Mapped[str] = mapped_column(String)  # "user" | "assistant"
+    content: Mapped[str] = mapped_column(String)
+
+
 class FoodCache(Base):
     """Per-100g macros for a normalized food name, cached from USDA/CSV lookups."""
 
@@ -162,6 +173,34 @@ def get_daily_tally(session: Session, day: date | None = None) -> tuple[float, f
         ).where(func.date(MealLog.timestamp) == day.isoformat())
     ).one()
     return float(row[0]), float(row[1])
+
+
+def save_chat_message(session: Session, role: str, content: str) -> ChatMessage:
+    """Append one turn to the stored transcript."""
+    message = ChatMessage(role=role, content=content)
+    session.add(message)
+    session.flush()
+    return message
+
+
+def get_chat_history(session: Session, limit: int = 200) -> list[tuple[str, str]]:
+    """Return the last `limit` turns as (role, content), oldest first.
+
+    Plain tuples rather than ORM rows -- callers read these after the session has
+    closed, and a detached row raises on attribute access.
+    """
+    recent = session.execute(
+        select(ChatMessage.role, ChatMessage.content)
+        .order_by(ChatMessage.id.desc())
+        .limit(limit)
+    ).all()
+    return [(role, content) for role, content in reversed(recent)]
+
+
+def clear_chat_history(session: Session) -> int:
+    """Delete the stored transcript. Returns how many turns were removed."""
+    count = session.query(ChatMessage).delete()
+    return int(count)
 
 
 def get_meals_for_day(session: Session, day: date | None = None) -> list[MealLog]:

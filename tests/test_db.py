@@ -5,9 +5,12 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 
 from models.db import (
+    clear_chat_history,
+    get_chat_history,
     get_daily_tally,
     get_meals_for_day,
     get_profile,
+    save_chat_message,
     save_meal,
     save_profile,
 )
@@ -93,3 +96,42 @@ def test_profile_is_a_single_upserted_row(session) -> None:
 
 def test_get_profile_returns_none_before_onboarding(session) -> None:
     assert get_profile(session) is None
+
+
+def test_chat_history_round_trips_in_order(session) -> None:
+    save_chat_message(session, "user", "2 rotis")
+    save_chat_message(session, "assistant", "Logged.")
+    save_chat_message(session, "user", "how am I doing?")
+    session.commit()
+
+    assert get_chat_history(session) == [
+        ("user", "2 rotis"),
+        ("assistant", "Logged."),
+        ("user", "how am I doing?"),
+    ]
+
+
+def test_chat_history_keeps_the_most_recent_turns(session) -> None:
+    for index in range(10):
+        save_chat_message(session, "user", f"message {index}")
+    session.commit()
+
+    recent = get_chat_history(session, limit=3)
+    assert recent == [
+        ("user", "message 7"),
+        ("user", "message 8"),
+        ("user", "message 9"),
+    ]
+
+
+def test_clearing_chat_leaves_meals_alone(session) -> None:
+    save_chat_message(session, "user", "2 rotis")
+    save_meal(session, raw_text="2 rotis", items=[ROTI])
+    session.commit()
+
+    removed = clear_chat_history(session)
+    session.commit()
+
+    assert removed == 1
+    assert get_chat_history(session) == []
+    assert len(get_meals_for_day(session)) == 1

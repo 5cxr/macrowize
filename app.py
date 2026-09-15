@@ -13,10 +13,13 @@ from calc.tdee import ActivityLevel, GoalType, Sex, compute_targets
 from graph import build_graph
 from llm import LLMUnavailableError
 from models.db import (
+    clear_chat_history,
+    get_chat_history,
     get_daily_tally,
     get_meals_for_day,
     get_profile,
     init_db,
+    save_chat_message,
     save_profile,
     session_scope,
 )
@@ -60,9 +63,17 @@ def init_session() -> None:
         init_db()
         st.session_state.checkpointer = MemorySaver()
         st.session_state.graph = build_graph(st.session_state.checkpointer)
-        st.session_state.history = []
         st.session_state.pending = None
         st.session_state.profile = load_profile_dict()
+        with session_scope() as session:
+            st.session_state.history = get_chat_history(session)
+
+
+def remember(role: str, content: str) -> None:
+    """Show a message and persist it, so a reload doesn't lose the transcript."""
+    st.session_state.history.append((role, content))
+    with session_scope() as session:
+        save_chat_message(session, role, content)
 
 
 def render_profile_form() -> None:
@@ -179,6 +190,14 @@ def render_dashboard() -> None:
                     f"({meal['total_kcal']:.0f} kcal)"
                 )
 
+    if st.session_state.history:
+        if st.sidebar.button("Clear chat", help="Clears the transcript only — logged meals stay"):
+            with session_scope() as session:
+                clear_chat_history(session)
+            st.session_state.history = []
+            st.session_state.pending = None
+            st.rerun()
+
 
 def render_confirmation(pending: dict) -> None:
     """The confirm-before-save gate. Nothing is written until Save is clicked."""
@@ -247,22 +266,23 @@ def finish_turn(result: dict) -> None:
     """Store the graph's reply (or its next interrupt) and rerun the page."""
     interrupts = result.get("__interrupt__")
     if interrupts:
+        # Shown but deliberately not persisted. The pending meal lives in the
+        # in-memory checkpointer, so a reload loses it -- and a summary on screen
+        # with no way to confirm it would be worse than no summary at all.
         st.session_state.pending = interrupts[0].value["pending_meal"]
-        st.session_state.history.append(
-            ("assistant", interrupts[0].value["summary"])
-        )
+        st.session_state.history.append(("assistant", interrupts[0].value["summary"]))
     else:
         st.session_state.pending = None
         reply = result.get("reply")
         if reply:
-            st.session_state.history.append(("assistant", reply))
+            remember("assistant", reply)
         st.session_state.profile = load_profile_dict()
     st.rerun()
 
 
 def handle_input(text: str) -> None:
     """Send one user message through the graph."""
-    st.session_state.history.append(("user", text))
+    remember("user", text)
     try:
         result = st.session_state.graph.invoke(
             {
@@ -273,7 +293,7 @@ def handle_input(text: str) -> None:
             THREAD_CONFIG,
         )
     except LLMUnavailableError as exc:
-        st.session_state.history.append(("assistant", f"⚠️ {exc}"))
+        remember("assistant", f"⚠️ {exc}")
         st.rerun()
         return
     finish_turn(result)

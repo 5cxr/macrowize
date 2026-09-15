@@ -171,6 +171,49 @@ def test_discard_button_leaves_the_db_empty(fresh_db, monkeypatch) -> None:
         assert session.query(MealLog).count() == 0
 
 
+def test_transcript_survives_a_reload(fresh_db, monkeypatch) -> None:
+    from tests.test_graph import StubLLM, meal_extraction, route_to
+
+    stub = StubLLM({
+        "RouteDecision": route_to("log_meal"),
+        "ExtractedMeal": meal_extraction(("roti", 2, "piece")),
+    })
+    for module in ("graph.router", "graph.log_meal", "graph.onboarding"):
+        monkeypatch.setattr(f"{module}.get_llm", lambda: stub)
+
+    app = _fill_profile(run_app())
+    app.chat_input[0].set_value("2 rotis").run()
+    next(b for b in app.button if b.label == "Save meal").click().run()
+
+    # A fresh AppTest is a fresh browser session -- nothing carried in memory.
+    reloaded = run_app()
+    assert not reloaded.exception
+    transcript = [block.value for block in reloaded.markdown]
+    assert any("2 rotis" in line for line in transcript), "user turn should persist"
+    assert any("Logged" in line for line in transcript), "assistant reply should persist"
+
+
+def test_unconfirmed_summary_is_not_persisted(fresh_db, monkeypatch) -> None:
+    """A summary with no way to confirm it would be worse than none at all."""
+    from tests.test_graph import StubLLM, meal_extraction, route_to
+
+    stub = StubLLM({
+        "RouteDecision": route_to("log_meal"),
+        "ExtractedMeal": meal_extraction(("roti", 2, "piece")),
+    })
+    for module in ("graph.router", "graph.log_meal", "graph.onboarding"):
+        monkeypatch.setattr(f"{module}.get_llm", lambda: stub)
+
+    app = _fill_profile(run_app())
+    app.chat_input[0].set_value("2 rotis").run()
+    assert any("look right" in block.value for block in app.markdown)
+
+    reloaded = run_app()
+    assert not any("look right" in block.value for block in reloaded.markdown)
+    with SessionLocal() as session:
+        assert session.query(MealLog).count() == 0
+
+
 def test_nothing_is_written_to_the_db_by_merely_chatting(fresh_db, monkeypatch) -> None:
     for key in ("GOOGLE_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY"):
         monkeypatch.delenv(key, raising=False)
