@@ -134,7 +134,16 @@ def render_dashboard() -> None:
     profile = st.session_state.profile
     with session_scope() as session:
         kcal, protein = get_daily_tally(session)
-        meals = get_meals_for_day(session)
+        # Read the fields out while the session is open -- these rows are detached
+        # the moment it closes, and touching an attribute afterwards raises.
+        meals = [
+            {
+                "time": meal.timestamp.strftime("%H:%M"),
+                "raw_text": meal.raw_text,
+                "total_kcal": meal.total_kcal,
+            }
+            for meal in get_meals_for_day(session)
+        ]
 
     st.sidebar.subheader("Today")
 
@@ -166,8 +175,8 @@ def render_dashboard() -> None:
         with st.sidebar.expander(f"{len(meals)} meal(s) logged"):
             for meal in meals:
                 st.caption(
-                    f"{meal.timestamp:%H:%M} — {meal.raw_text} "
-                    f"({meal.total_kcal:.0f} kcal)"
+                    f"{meal['time']} — {meal['raw_text']} "
+                    f"({meal['total_kcal']:.0f} kcal)"
                 )
 
 

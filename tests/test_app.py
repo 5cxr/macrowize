@@ -86,9 +86,13 @@ def test_logged_meals_move_the_tally(fresh_db) -> None:
     app.selectbox(key="goal").set_value("cut")
     app.button[0].click().run()
 
+    # The meal list renders inside an expander; regression guard for reading
+    # detached ORM rows after their session closed.
+    assert not app.exception
     markdown = " ".join(block.value for block in app.sidebar.markdown)
     assert "**211**" in markdown
     assert "`+1967`" in markdown
+    assert any("2 rotis" in block.value for block in app.sidebar.caption)
 
 
 def test_chat_without_an_api_key_reports_it_instead_of_crashing(fresh_db, monkeypatch) -> None:

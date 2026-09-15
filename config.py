@@ -25,7 +25,7 @@ USDA_TIMEOUT_SECONDS = float(os.getenv("USDA_TIMEOUT_SECONDS", "10"))
 # Swap providers with one env var: MACROWIZE_LLM_PROVIDER=groq|ollama
 LLM_PROVIDER = os.getenv("MACROWIZE_LLM_PROVIDER", "google")
 DEFAULT_MODELS = {
-    "google": "gemini-2.5-flash",
+    "google": "gemini-3.6-flash",
     "groq": "llama-3.3-70b-versatile",
     "ollama": "llama3.1:8b",
 }
