@@ -1,0 +1,131 @@
+food_name,aliases,category,kcal_per_100g,protein_g_per_100g,carbs_g_per_100g,fat_g_per_100g,grams_per_piece,grams_per_bowl,grams_per_serving
+roti,chapati|phulka|wheat roti,flatbread,264,9.6,52.0,2.5,40,,80
+tandoori roti,,flatbread,280,9.0,55.0,3.0,50,,100
+paratha,plain paratha,flatbread,326,7.5,45.0,13.0,70,,140
+aloo paratha,potato paratha,flatbread,250,5.5,35.0,10.0,120,,120
+naan,butter naan,flatbread,310,9.0,53.0,6.0,90,,90
+bhatura,bhature,flatbread,350,7.0,45.0,16.0,80,,160
+puri,poori,flatbread,380,7.0,45.0,19.0,25,,75
+missi roti,,flatbread,290,11.0,48.0,6.0,50,,100
+thepla,,flatbread,330,9.0,45.0,13.0,45,,90
+bread slice,white bread|sandwich bread,flatbread,265,9.0,49.0,3.2,30,,60
+pav,ladi pav|bun,flatbread,280,8.0,53.0,3.5,45,,90
+rice,white rice|cooked rice|steamed rice|chawal,grain,130,2.7,28.0,0.3,,150,200
+brown rice,,grain,123,2.7,26.0,1.0,,150,200
+jeera rice,cumin rice,grain,170,3.0,30.0,4.0,,150,200
+veg biryani,vegetable biryani,grain,180,4.5,26.0,6.0,,200,250
+chicken biryani,,grain,200,10.0,24.0,7.0,,200,250
+pulao,pilaf|veg pulao,grain,165,3.5,28.0,4.5,,150,200
+khichdi,khichri,grain,120,4.5,20.0,2.5,,200,250
+poha,flattened rice,grain,130,2.5,24.0,3.0,,150,200
+upma,uppma,grain,145,3.5,22.0,5.0,,150,200
+daliya,broken wheat|bulgur porridge,grain,120,4.0,24.0,1.0,,200,250
+idli,,grain,130,4.0,26.0,0.5,40,,80
+dosa,plain dosa|sada dosa,grain,165,4.0,28.0,4.0,90,,90
+masala dosa,,grain,190,4.0,30.0,6.0,150,,150
+uttapam,uttapa,grain,155,4.5,26.0,4.0,100,,100
+medu vada,vada|urad vada,snack,280,8.0,32.0,13.0,45,,90
+dhokla,khaman,snack,160,6.0,24.0,4.0,40,,120
+dal tadka,tadka dal|dal,dal,120,6.0,16.0,3.5,,150,200
+dal fry,,dal,130,6.0,16.0,4.5,,150,200
+moong dal,yellow moong dal,dal,105,7.0,15.0,1.5,,150,200
+toor dal,arhar dal|tur dal,dal,115,6.5,16.0,2.5,,150,200
+masoor dal,red lentil dal,dal,110,7.0,15.0,2.0,,150,200
+chana dal,,dal,140,8.0,20.0,3.0,,150,200
+urad dal,black gram dal,dal,130,7.5,18.0,3.0,,150,200
+dal makhani,,dal,180,7.0,16.0,9.0,,150,200
+sambar,,dal,85,3.5,12.0,2.5,,150,200
+rasam,,dal,40,1.5,6.0,1.0,,150,200
+chole,chana masala|chickpea curry,dal,165,8.0,22.0,5.0,,150,200
+rajma,kidney bean curry,dal,145,7.0,20.0,4.0,,150,200
+kadhi,kadhi pakora,dal,110,4.0,10.0,6.0,,150,200
+sprouts,moong sprouts|sprouted moong,dal,30,3.0,6.0,0.2,,100,150
+soya chunks,meal maker|nutrela,dal,345,52.0,33.0,0.5,,50,50
+paneer,cottage cheese,dairy,265,18.0,6.0,20.0,,,100
+paneer butter masala,paneer makhani,dairy,240,11.0,9.0,18.0,,150,200
+palak paneer,,dairy,180,9.0,8.0,13.0,,150,200
+paneer bhurji,,dairy,220,14.0,7.0,16.0,,120,150
+shahi paneer,,dairy,250,10.0,10.0,20.0,,150,200
+curd,dahi|yogurt|plain yogurt,dairy,60,3.5,4.7,3.3,,150,200
+greek yogurt,hung curd,dairy,97,9.0,4.0,5.0,,150,200
+buttermilk,chaas|chhachh,beverage,35,2.0,3.5,1.2,,,200
+lassi,sweet lassi,beverage,110,3.0,18.0,3.0,,,250
+milk,full fat milk|whole milk|doodh,beverage,62,3.2,4.8,3.3,,,200
+toned milk,skim milk|low fat milk,beverage,48,3.1,4.7,1.8,,,200
+ghee,clarified butter,fat,900,0.0,0.0,100.0,,,12
+butter,makhan,fat,717,0.9,0.1,81.0,,,14
+cheese,cheese slice|processed cheese,dairy,350,22.0,2.0,28.0,20,,20
+tofu,bean curd,dairy,76,8.0,2.0,4.8,,,100
+aloo gobi,,sabzi,110,2.5,13.0,5.5,,150,200
+bhindi masala,okra sabzi|lady finger sabzi,sabzi,120,2.5,10.0,8.0,,150,200
+baingan bharta,brinjal bharta|eggplant bharta,sabzi,105,2.5,10.0,6.5,,150,200
+mix veg,mixed vegetable sabzi,sabzi,100,3.0,11.0,5.0,,150,200
+aloo matar,potato peas sabzi,sabzi,120,3.5,16.0,5.0,,150,200
+palak sabzi,spinach sabzi|saag,sabzi,80,3.0,6.0,5.0,,150,200
+lauki sabzi,bottle gourd sabzi|doodhi,sabzi,70,1.5,7.0,4.0,,150,200
+tinda sabzi,,sabzi,70,1.5,7.0,4.0,,150,200
+karela sabzi,bitter gourd sabzi,sabzi,95,2.0,9.0,5.5,,150,200
+cabbage sabzi,patta gobi sabzi,sabzi,75,2.0,8.0,4.0,,150,200
+gajar matar,carrot peas sabzi,sabzi,95,2.5,12.0,4.5,,150,200
+jeera aloo,,sabzi,130,2.0,18.0,6.0,,150,200
+dum aloo,,sabzi,150,3.0,18.0,8.0,,150,200
+malai kofta,,sabzi,260,7.0,16.0,19.0,,150,200
+chicken curry,chicken masala,nonveg,180,15.0,5.0,11.0,,150,200
+butter chicken,murgh makhani,nonveg,230,15.0,7.0,16.0,,150,200
+chicken tikka,,nonveg,190,25.0,3.0,8.0,30,,150
+tandoori chicken,,nonveg,175,25.0,2.0,7.0,100,,200
+grilled chicken breast,chicken breast,nonveg,165,31.0,0.0,3.6,100,,150
+chicken keema,keema|mutton keema,nonveg,230,18.0,5.0,15.0,,150,200
+mutton curry,lamb curry|gosht,nonveg,250,17.0,4.0,18.0,,150,200
+fish curry,machli curry,nonveg,150,15.0,5.0,8.0,,150,200
+fish fry,fried fish,nonveg,220,20.0,8.0,12.0,80,,150
+prawn curry,jhinga curry,nonveg,145,16.0,5.0,7.0,,150,200
+boiled egg,egg|anda|hard boiled egg,nonveg,155,13.0,1.1,11.0,50,,100
+omelette,egg omelette,nonveg,195,13.0,2.0,15.0,60,,120
+egg bhurji,scrambled egg,nonveg,200,12.0,3.0,16.0,,120,150
+samosa,,snack,300,5.0,32.0,17.0,60,,120
+pakora,bhaji|bhajiya|fritter,snack,315,7.0,28.0,19.0,25,,100
+bhel puri,bhel,snack,230,5.0,35.0,8.0,,100,150
+pani puri,golgappa|puchka,snack,330,6.0,42.0,15.0,12,,72
+vada pav,,snack,290,7.0,40.0,12.0,130,,130
+pav bhaji,,snack,160,4.0,20.0,7.0,,,250
+chole bhature,,snack,250,7.0,30.0,11.0,,,300
+veg momos,momos|dimsum,snack,180,5.0,28.0,5.0,25,,150
+spring roll,,snack,250,5.0,30.0,12.0,60,,120
+chivda,poha chivda|namkeen,snack,450,9.0,55.0,22.0,,40,40
+namkeen mixture,mixture|sev,snack,520,12.0,50.0,30.0,,40,40
+roasted peanuts,peanuts|moongphali,snack,585,26.0,16.0,49.0,,50,30
+papad,appalam,snack,350,20.0,45.0,8.0,10,,20
+gulab jamun,,sweet,300,4.0,45.0,12.0,40,,80
+rasgulla,rosogolla,sweet,190,4.0,38.0,2.0,50,,100
+jalebi,,sweet,400,3.0,60.0,17.0,30,,60
+besan laddu,laddu|ladoo,sweet,450,8.0,55.0,22.0,40,,40
+barfi,burfi,sweet,400,7.0,50.0,19.0,30,,60
+kheer,rice kheer|payasam,sweet,145,4.0,22.0,5.0,,150,150
+gajar halwa,carrot halwa,sweet,250,4.0,30.0,13.0,,120,120
+sooji halwa,rava halwa|suji halwa,sweet,350,5.0,50.0,15.0,,100,100
+banana,kela,fruit,89,1.1,23.0,0.3,120,,120
+apple,seb,fruit,52,0.3,14.0,0.2,180,150,180
+mango,aam,fruit,60,0.8,15.0,0.4,200,150,200
+papaya,papita,fruit,43,0.5,11.0,0.3,,150,200
+orange,santra,fruit,47,0.9,12.0,0.1,130,,130
+guava,amrood,fruit,68,2.6,14.0,1.0,100,,100
+watermelon,tarbooj,fruit,30,0.6,8.0,0.2,,150,200
+grapes,angoor,fruit,69,0.7,18.0,0.2,,100,100
+pomegranate,anaar,fruit,83,1.7,19.0,1.2,,100,100
+oats,cooked oats|oatmeal|porridge,grain,71,2.5,12.0,1.5,,200,250
+dry oats,rolled oats|raw oats,grain,389,17.0,66.0,7.0,,40,40
+whey protein,protein powder|whey,supplement,400,80.0,8.0,6.0,,,30
+peanut butter,,fat,588,25.0,20.0,50.0,,,16
+almonds,badam,snack,579,21.0,22.0,50.0,1.2,30,30
+walnuts,akhrot,snack,654,15.0,14.0,65.0,5,30,30
+chia seeds,,snack,486,17.0,42.0,31.0,,,12
+coconut chutney,nariyal chutney,condiment,200,3.0,8.0,17.0,,,20
+green chutney,mint chutney|dhaniya chutney,condiment,60,2.0,8.0,2.0,,,15
+pickle,achar,condiment,150,1.0,10.0,12.0,,,5
+salad,green salad|kachumber,sabzi,25,1.0,5.0,0.2,,100,150
+tea,chai|milk tea,beverage,70,2.0,9.0,3.0,,,150
+coffee,milk coffee,beverage,65,2.5,8.0,2.8,,,150
+sugar,cheeni|shakkar,condiment,387,0.0,100.0,0.0,,,5
+honey,shahad,condiment,304,0.3,82.0,0.0,,,7
+besan,gram flour,grain,387,22.0,58.0,7.0,,,30
