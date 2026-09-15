@@ -187,8 +187,9 @@ provider and data-source choices out of the graph nodes.
    confirm-before-save as its own interrupting node.
 4. **Phase 4:** Streamlit sidebar dashboard and chat, wired to the compiled graph.
 
-Not yet built, from the original Phase 4 list: deleting a logged meal, and a
-multi-day history view. Both only reachable through the sidebar today.
+The rest of the original Phase 4 list landed afterwards: a persisted chat
+transcript, deleting a logged meal (two-step, History view only), and a
+multi-day history view with per-day totals against target.
 
 ## 10. Decisions Made
 
