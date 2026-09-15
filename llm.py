@@ -1,13 +1,15 @@
 """Single place the chat model is constructed.
 
-Swapping Groq for a local Ollama model is one env var:
-    MACROWIZE_LLM_PROVIDER=ollama MACROWIZE_LLM_MODEL=llama3.1:8b
-Nothing downstream imports a provider package directly.
+Switching providers is one env var, nothing downstream imports a provider package:
+    MACROWIZE_LLM_PROVIDER=google   (default, needs GOOGLE_API_KEY)
+    MACROWIZE_LLM_PROVIDER=groq     (needs GROQ_API_KEY)
+    MACROWIZE_LLM_PROVIDER=ollama   (local, needs no key)
 """
 
 from __future__ import annotations
 
 import functools
+import os
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
@@ -18,19 +20,34 @@ class LLMUnavailableError(RuntimeError):
     """Raised when no chat model can be constructed, usually a missing API key."""
 
 
+def _require_key(*names: str) -> str:
+    """Return the first of `names` that is set, or explain what to do about it."""
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    raise LLMUnavailableError(
+        f"{names[0]} is not set. Export it, or run with "
+        "MACROWIZE_LLM_PROVIDER=ollama for a local model that needs no key."
+    )
+
+
 @functools.lru_cache(maxsize=1)
 def get_llm() -> BaseChatModel:
     """Return the configured chat model, built once and reused."""
     provider = LLM_PROVIDER.lower()
 
-    if provider == "groq":
-        import os
+    if provider == "google":
+        # The SDK reads GOOGLE_API_KEY; accept AI Studio's GEMINI_API_KEY too.
+        key = _require_key("GOOGLE_API_KEY", "GEMINI_API_KEY")
+        from langchain_google_genai import ChatGoogleGenerativeAI
 
-        if not os.getenv("GROQ_API_KEY"):
-            raise LLMUnavailableError(
-                "GROQ_API_KEY is not set. Export it, or run with "
-                "MACROWIZE_LLM_PROVIDER=ollama for a local model."
-            )
+        return ChatGoogleGenerativeAI(
+            model=LLM_MODEL, temperature=LLM_TEMPERATURE, google_api_key=key
+        )
+
+    if provider == "groq":
+        _require_key("GROQ_API_KEY")
         from langchain_groq import ChatGroq
 
         return ChatGroq(model=LLM_MODEL, temperature=LLM_TEMPERATURE)

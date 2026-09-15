@@ -17,8 +17,13 @@ INDIAN_FOODS_CSV = PROJECT_ROOT / "nutrition" / "indian_foods.csv"
 USDA_API_KEY = os.getenv("USDA_API_KEY", "DEMO_KEY")
 USDA_TIMEOUT_SECONDS = float(os.getenv("USDA_TIMEOUT_SECONDS", "10"))
 
-# Swap providers with one env var: MACROWIZE_LLM_PROVIDER=ollama
-LLM_PROVIDER = os.getenv("MACROWIZE_LLM_PROVIDER", "groq")
-LLM_MODEL = os.getenv("MACROWIZE_LLM_MODEL", "llama-3.3-70b-versatile")
+# Swap providers with one env var: MACROWIZE_LLM_PROVIDER=groq|ollama
+LLM_PROVIDER = os.getenv("MACROWIZE_LLM_PROVIDER", "google")
+DEFAULT_MODELS = {
+    "google": "gemini-2.5-flash",
+    "groq": "llama-3.3-70b-versatile",
+    "ollama": "llama3.1:8b",
+}
+LLM_MODEL = os.getenv("MACROWIZE_LLM_MODEL") or DEFAULT_MODELS.get(LLM_PROVIDER, "")
 LLM_TEMPERATURE = float(os.getenv("MACROWIZE_LLM_TEMPERATURE", "0"))
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")

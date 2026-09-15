@@ -92,7 +92,8 @@ def test_logged_meals_move_the_tally(fresh_db) -> None:
 
 
 def test_chat_without_an_api_key_reports_it_instead_of_crashing(fresh_db, monkeypatch) -> None:
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    for key in ("GOOGLE_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
     app = run_app()
     app.number_input(key="height").set_value(178.0)
     app.number_input(key="weight").set_value(75.0)
@@ -106,7 +107,7 @@ def test_chat_without_an_api_key_reports_it_instead_of_crashing(fresh_db, monkey
 
     assert not app.exception, "a missing key must not crash the app"
     replies = [block.value for block in app.markdown]
-    assert any("GROQ_API_KEY" in reply for reply in replies)
+    assert any("GOOGLE_API_KEY" in reply for reply in replies)
 
 
 def _fill_profile(app: AppTest) -> AppTest:
@@ -167,7 +168,8 @@ def test_discard_button_leaves_the_db_empty(fresh_db, monkeypatch) -> None:
 
 
 def test_nothing_is_written_to_the_db_by_merely_chatting(fresh_db, monkeypatch) -> None:
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    for key in ("GOOGLE_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
     app = run_app()
     app.chat_input[0].set_value("2 rotis").run()
 
