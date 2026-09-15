@@ -25,7 +25,8 @@ NUTRIENT_IDS = {
 }
 
 # Curated data beats branded user-submitted entries for generic foods.
-PREFERRED_DATA_TYPES = ["Foundation", "SR Legacy", "Survey (FNDDS)"]
+# The API wants these comma-joined in one param; repeating the param 400s.
+PREFERRED_DATA_TYPES = "Foundation,SR Legacy,Survey (FNDDS)"
 
 
 @dataclass(frozen=True)
