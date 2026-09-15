@@ -1,4 +1,8 @@
-# Phase 1 only. LangGraph/LangChain/Groq land in Phase 3, Streamlit in Phase 4.
 SQLAlchemy>=2.0
 pydantic>=2.0
+requests>=2.31
+langgraph>=1.0
+langchain-core>=1.0
+langchain-groq>=1.0
+langchain-ollama>=1.0
 pytest>=8.0
