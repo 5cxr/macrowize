@@ -1,4 +1,4 @@
-"""Point the DB at a throwaway file before anything imports `config`."""
+"""Point the DB at a throwaway file before anything imports `db`."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ os.environ["MACROWIZE_DB"] = str(_TMP_DB)
 
 import pytest  # noqa: E402
 
-from models.db import Base, SessionLocal, engine  # noqa: E402
+from db import Base, SessionLocal, engine  # noqa: E402
 
 
 @pytest.fixture

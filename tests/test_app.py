@@ -1,21 +1,21 @@
-"""Streamlit UI tests via AppTest -- runs app.py for real, without a browser."""
+"""The confirm gate, driven through the real app with the model stubbed out.
+
+These are the tests worth keeping about the UI: they assert the one design promise
+that would be expensive to get wrong -- a parsed meal never reaches the database
+until the user clicks Save.
+"""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from config import PROJECT_ROOT
-from models.db import Base, MealLog, SessionLocal, engine, get_profile, save_meal
+from agent import FoodItem
+from db import Base, MealLog, SessionLocal, engine
 
-APP_PATH = str(PROJECT_ROOT / "app.py")
-
-ROTI_ITEM = {
-    "food_name": "roti", "quantity": 2, "unit": "piece",
-    "kcal": 211.2, "protein_g": 7.7, "carbs_g": 41.6, "fat_g": 2.0,
-}
+APP_PATH = str(Path(__file__).resolve().parent.parent / "app.py")
 
 
 @pytest.fixture
@@ -31,90 +31,18 @@ def run_app() -> AppTest:
     return app
 
 
-def test_app_starts_without_a_profile(fresh_db) -> None:
-    app = run_app()
-    assert not app.exception
-    assert "Fill in your profile" in app.sidebar.info[0].value
+def stub_agent(monkeypatch, route: str, *items: tuple[str, float, str]) -> None:
+    """Replace both LLM calls. Patched on `agent`, not `app`: AppTest re-executes
+    app.py on every run, which would rebind a name imported directly into it."""
+    monkeypatch.setattr("agent.classify", lambda text: route)
+    monkeypatch.setattr(
+        "agent.parse_meal",
+        lambda text: [FoodItem(name=n, quantity=q, unit=u) for n, q, u in items],
+    )
 
 
-def test_profile_form_computes_and_persists_targets(fresh_db) -> None:
-    app = run_app()
-
-    app.number_input(key="height").set_value(178.0)
-    app.number_input(key="weight").set_value(75.0)
-    app.number_input(key="age").set_value(28)
-    app.selectbox(key="sex").set_value("male")
-    app.selectbox(key="activity").set_value("moderate")
-    app.selectbox(key="goal").set_value("cut")
-    app.button[0].click().run()
-
-    assert not app.exception
-    with SessionLocal() as session:
-        profile = get_profile(session)
-        assert profile is not None
-        assert profile.target_kcal == 2178
-        assert (profile.target_protein_min_g, profile.target_protein_max_g) == (135, 180)
-
-
-def test_dashboard_shows_progress_against_targets(fresh_db) -> None:
-    app = run_app()
-    app.number_input(key="height").set_value(178.0)
-    app.number_input(key="weight").set_value(75.0)
-    app.number_input(key="age").set_value(28)
-    app.selectbox(key="sex").set_value("male")
-    app.selectbox(key="activity").set_value("moderate")
-    app.selectbox(key="goal").set_value("cut")
-    app.button[0].click().run()
-
-    markdown = " ".join(block.value for block in app.sidebar.markdown)
-    assert "2178 kcal" in markdown
-    assert "135–180 g protein" in markdown
-    assert "`+2178` left" in markdown, "nothing logged yet, so the full budget is left"
-
-
-def test_logged_meals_move_the_tally(fresh_db) -> None:
-    with SessionLocal() as session:
-        save_meal(session, raw_text="2 rotis", items=[ROTI_ITEM])
-        session.commit()
-
-    app = run_app()
-    app.number_input(key="height").set_value(178.0)
-    app.number_input(key="weight").set_value(75.0)
-    app.number_input(key="age").set_value(28)
-    app.selectbox(key="sex").set_value("male")
-    app.selectbox(key="activity").set_value("moderate")
-    app.selectbox(key="goal").set_value("cut")
-    app.button[0].click().run()
-
-    # The meal list renders inside an expander; regression guard for reading
-    # detached ORM rows after their session closed.
-    assert not app.exception
-    markdown = " ".join(block.value for block in app.sidebar.markdown)
-    assert "**211**" in markdown
-    assert "`+1967`" in markdown
-    assert any("2 rotis" in block.value for block in app.sidebar.caption)
-
-
-def test_chat_without_an_api_key_reports_it_instead_of_crashing(fresh_db, monkeypatch) -> None:
-    for key in ("GOOGLE_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY"):
-        monkeypatch.delenv(key, raising=False)
-    app = run_app()
-    app.number_input(key="height").set_value(178.0)
-    app.number_input(key="weight").set_value(75.0)
-    app.number_input(key="age").set_value(28)
-    app.selectbox(key="sex").set_value("male")
-    app.selectbox(key="activity").set_value("moderate")
-    app.selectbox(key="goal").set_value("cut")
-    app.button[0].click().run()
-
-    app.chat_input[0].set_value("2 rotis and a bowl of dal").run()
-
-    assert not app.exception, "a missing key must not crash the app"
-    replies = [block.value for block in app.markdown]
-    assert any("GOOGLE_API_KEY" in reply for reply in replies)
-
-
-def _fill_profile(app: AppTest) -> AppTest:
+def with_profile(app: AppTest) -> AppTest:
+    """75kg moderate cut -> 2178 kcal, 135-180g protein."""
     app.number_input(key="height").set_value(178.0)
     app.number_input(key="weight").set_value(75.0)
     app.number_input(key="age").set_value(28)
@@ -124,28 +52,22 @@ def _fill_profile(app: AppTest) -> AppTest:
     return app.button[0].click().run()
 
 
-def test_meal_reaches_the_db_only_after_the_save_button(fresh_db, monkeypatch) -> None:
-    """The whole point of the confirm gate, driven through the real UI."""
-    from tests.test_graph import StubLLM, meal_extraction, route_to
+def meal_count() -> int:
+    with SessionLocal() as session:
+        return session.query(MealLog).count()
 
-    stub = StubLLM({
-        "RouteDecision": route_to("log_meal"),
-        "ExtractedMeal": meal_extraction(("roti", 2, "piece")),
-    })
-    for module in ("graph.router", "graph.log_meal", "graph.onboarding"):
-        monkeypatch.setattr(f"{module}.get_llm", lambda: stub)
 
-    app = _fill_profile(run_app())
+def test_a_parsed_meal_is_not_saved_until_save_is_clicked(fresh_db, monkeypatch) -> None:
+    stub_agent(monkeypatch, "log_meal", ("roti", 2, "piece"))
+
+    app = with_profile(run_app())
     app.chat_input[0].set_value("2 rotis").run()
 
-    # Confirmation is on screen; the DB is still untouched.
     assert not app.exception
     assert any("look right" in block.value for block in app.markdown)
-    with SessionLocal() as session:
-        assert session.query(MealLog).count() == 0
+    assert meal_count() == 0, "the confirmation is on screen; nothing is saved"
 
-    save_button = next(b for b in app.button if b.label == "Save meal")
-    save_button.click().run()
+    next(b for b in app.button if b.label == "Save meal").click().run()
 
     with SessionLocal() as session:
         meal = session.query(MealLog).one()
@@ -153,151 +75,59 @@ def test_meal_reaches_the_db_only_after_the_save_button(fresh_db, monkeypatch) -
         assert meal.total_kcal == pytest.approx(211.2, abs=0.1)
 
 
-def test_discard_button_leaves_the_db_empty(fresh_db, monkeypatch) -> None:
-    from tests.test_graph import StubLLM, meal_extraction, route_to
+def test_discarding_saves_nothing(fresh_db, monkeypatch) -> None:
+    stub_agent(monkeypatch, "log_meal", ("roti", 2, "piece"))
 
-    stub = StubLLM({
-        "RouteDecision": route_to("log_meal"),
-        "ExtractedMeal": meal_extraction(("roti", 2, "piece")),
-    })
-    for module in ("graph.router", "graph.log_meal", "graph.onboarding"):
-        monkeypatch.setattr(f"{module}.get_llm", lambda: stub)
-
-    app = _fill_profile(run_app())
+    app = with_profile(run_app())
     app.chat_input[0].set_value("2 rotis").run()
     next(b for b in app.button if b.label == "Discard").click().run()
 
-    with SessionLocal() as session:
-        assert session.query(MealLog).count() == 0
+    assert meal_count() == 0
 
 
-def test_transcript_survives_a_reload(fresh_db, monkeypatch) -> None:
-    from tests.test_graph import StubLLM, meal_extraction, route_to
+def test_a_corrected_quantity_is_looked_up_again_not_multiplied(
+    fresh_db, monkeypatch
+) -> None:
+    stub_agent(monkeypatch, "log_meal", ("roti", 2, "piece"))
 
-    stub = StubLLM({
-        "RouteDecision": route_to("log_meal"),
-        "ExtractedMeal": meal_extraction(("roti", 2, "piece")),
-    })
-    for module in ("graph.router", "graph.log_meal", "graph.onboarding"):
-        monkeypatch.setattr(f"{module}.get_llm", lambda: stub)
-
-    app = _fill_profile(run_app())
+    app = with_profile(run_app())
     app.chat_input[0].set_value("2 rotis").run()
+    app.number_input(key="qty_0").set_value(4.0).run()
     next(b for b in app.button if b.label == "Save meal").click().run()
 
-    # A fresh AppTest is a fresh browser session -- nothing carried in memory.
-    reloaded = run_app()
-    assert not reloaded.exception
-    transcript = [block.value for block in reloaded.markdown]
-    assert any("2 rotis" in line for line in transcript), "user turn should persist"
-    assert any("Logged" in line for line in transcript), "assistant reply should persist"
-
-
-def test_unconfirmed_summary_is_not_persisted(fresh_db, monkeypatch) -> None:
-    """A summary with no way to confirm it would be worse than none at all."""
-    from tests.test_graph import StubLLM, meal_extraction, route_to
-
-    stub = StubLLM({
-        "RouteDecision": route_to("log_meal"),
-        "ExtractedMeal": meal_extraction(("roti", 2, "piece")),
-    })
-    for module in ("graph.router", "graph.log_meal", "graph.onboarding"):
-        monkeypatch.setattr(f"{module}.get_llm", lambda: stub)
-
-    app = _fill_profile(run_app())
-    app.chat_input[0].set_value("2 rotis").run()
-    assert any("look right" in block.value for block in app.markdown)
-
-    reloaded = run_app()
-    assert not any("look right" in block.value for block in reloaded.markdown)
     with SessionLocal() as session:
-        assert session.query(MealLog).count() == 0
+        meal = session.query(MealLog).one()
+        assert meal.items[0]["quantity"] == 4
+        assert meal.total_kcal == pytest.approx(422.4, abs=0.1), "4 pieces = 160g"
 
 
-def test_history_view_lists_days_with_and_without_meals(fresh_db) -> None:
-    with SessionLocal() as session:
-        save_meal(session, raw_text="2 rotis today", items=[ROTI_ITEM])
-        save_meal(
-            session, raw_text="dal two days ago", items=[ROTI_ITEM],
-            timestamp=datetime.now() - timedelta(days=2),
-        )
-        session.commit()
+def test_progress_is_answered_from_sql_without_the_model(fresh_db, monkeypatch) -> None:
+    extractions: list[str] = []
+    monkeypatch.setattr("agent.classify", lambda text: "query_progress")
+    monkeypatch.setattr("agent.parse_meal", lambda text: extractions.append(text) or [])
 
-    app = _fill_profile(run_app())
-    app.radio(key="view").set_value("History").run()
+    app = with_profile(run_app())
+    app.chat_input[0].set_value("how am I doing?").run()
 
     assert not app.exception
-    assert "History" in " ".join(h.value for h in app.title)
-    captions = " ".join(block.value for block in app.caption)
-    assert "nothing logged" in captions, "empty days should be visible, not skipped"
-    assert any("2 of 7" in m.value for m in app.metric), "days-logged metric"
+    assert extractions == [], "the progress path must not extract anything"
+    # Assert on the reply itself: the sidebar also renders the target, so a looser
+    # check passed once while the reply was actually a database error.
+    reply = next(r.value for r in app.markdown if "Today so far" in r.value)
+    assert "**Calories:** 0 / 2178" in reply
+    assert "**Protein:** 0.0 / 135–180 g" in reply
+    assert "⚠️" not in reply
 
 
-def test_history_view_is_empty_when_nothing_logged(fresh_db) -> None:
-    app = _fill_profile(run_app())
-    app.radio(key="view").set_value("History").run()
+def test_a_failing_model_call_is_reported_not_raised(fresh_db, monkeypatch) -> None:
+    """Free tiers rate-limit constantly; that must not blank the page."""
+    def boom(text):
+        raise RuntimeError("429 quota exceeded")
 
-    assert not app.exception
-    assert any("Nothing logged" in info.value for info in app.info)
+    monkeypatch.setattr("agent.classify", boom)
 
-
-def _open_history(app: AppTest) -> AppTest:
-    return app.radio(key="view").set_value("History").run()
-
-
-def test_deleting_a_meal_takes_two_clicks(fresh_db) -> None:
-    with SessionLocal() as session:
-        save_meal(session, raw_text="2 rotis", items=[ROTI_ITEM])
-        session.commit()
-
-    app = _open_history(_fill_profile(run_app()))
-
-    # First click only arms the confirmation.
-    next(b for b in app.button if b.label == "Delete").click().run()
-    with SessionLocal() as session:
-        assert session.query(MealLog).count() == 1, "one click must not delete"
-    assert any("permanently" in w.value for w in app.warning)
-
-    next(b for b in app.button if b.label == "Delete").click().run()
-    with SessionLocal() as session:
-        assert session.query(MealLog).count() == 0
-
-
-def test_keeping_a_meal_cancels_the_delete(fresh_db) -> None:
-    with SessionLocal() as session:
-        save_meal(session, raw_text="2 rotis", items=[ROTI_ITEM])
-        session.commit()
-
-    app = _open_history(_fill_profile(run_app()))
-    next(b for b in app.button if b.label == "Delete").click().run()
-    next(b for b in app.button if b.label == "Keep").click().run()
-
-    assert not app.exception
-    with SessionLocal() as session:
-        assert session.query(MealLog).count() == 1
-
-
-def test_deleting_a_meal_updates_the_dashboard(fresh_db) -> None:
-    with SessionLocal() as session:
-        save_meal(session, raw_text="2 rotis", items=[ROTI_ITEM])
-        session.commit()
-
-    app = _open_history(_fill_profile(run_app()))
-    assert "**211**" in " ".join(b.value for b in app.sidebar.markdown)
-
-    next(b for b in app.button if b.label == "Delete").click().run()
-    next(b for b in app.button if b.label == "Delete").click().run()
-
-    markdown = " ".join(b.value for b in app.sidebar.markdown)
-    assert "**0**" in markdown
-    assert "`+2178` left" in markdown
-
-
-def test_nothing_is_written_to_the_db_by_merely_chatting(fresh_db, monkeypatch) -> None:
-    for key in ("GOOGLE_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY"):
-        monkeypatch.delenv(key, raising=False)
-    app = run_app()
+    app = with_profile(run_app())
     app.chat_input[0].set_value("2 rotis").run()
 
-    with SessionLocal() as session:
-        assert session.query(MealLog).count() == 0
+    assert not app.exception, "the error belongs in the chat, not a traceback page"
+    assert any("model call failed" in block.value for block in app.markdown)

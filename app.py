@@ -5,14 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 import streamlit as st
-from langchain_core.messages import HumanMessage
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.types import Command
 
-from calc.tdee import ActivityLevel, GoalType, Sex, compute_targets
-from graph import build_graph
-from llm import LLMUnavailableError
-from models.db import (
+import agent
+import nutrition
+from agent import LLMUnavailableError
+from db import (
     clear_chat_history,
     delete_meal,
     get_chat_history,
@@ -22,10 +19,11 @@ from models.db import (
     get_profile,
     init_db,
     save_chat_message,
+    save_meal,
     save_profile,
     session_scope,
 )
-from nutrition.lookup import resolve_item
+from tdee import ActivityLevel, GoalType, Sex, compute_targets
 
 st.set_page_config(page_title="macrowize", page_icon="🍽", layout="wide")
 
@@ -37,36 +35,25 @@ ACTIVITY_LABELS = {
     ActivityLevel.VERY_ACTIVE: "Very active — physical job or twice daily",
 }
 
-THREAD_CONFIG = {"configurable": {"thread_id": "macrowize-single-user"}}
+FALLBACK_REPLY = (
+    "I track meals and macros. Tell me what you ate (\"2 rotis and a bowl of dal\"), "
+    "ask how today's going, or update your stats in the sidebar."
+)
 
 
-def load_profile_dict() -> dict[str, Any] | None:
-    """Read the stored profile into a plain dict for the graph state."""
+def load_profile() -> dict[str, Any] | None:
+    """Read the stored profile, or None before onboarding."""
     with session_scope() as session:
-        profile = get_profile(session)
-        if profile is None:
-            return None
-        return {
-            "height_cm": profile.height_cm,
-            "weight_kg": profile.weight_kg,
-            "age": profile.age,
-            "sex": profile.sex,
-            "activity_level": profile.activity_level,
-            "goal_type": profile.goal_type,
-            "target_kcal": profile.target_kcal,
-            "target_protein_min_g": profile.target_protein_min_g,
-            "target_protein_max_g": profile.target_protein_max_g,
-        }
+        return get_profile(session)
 
 
 def init_session() -> None:
-    """Set up the graph, checkpointer, and chat history once per browser session."""
-    if "graph" not in st.session_state:
+    """Create tables and load the profile and transcript, once per browser session."""
+    if "started" not in st.session_state:
         init_db()
-        st.session_state.checkpointer = MemorySaver()
-        st.session_state.graph = build_graph(st.session_state.checkpointer)
+        st.session_state.started = True
         st.session_state.pending = None
-        st.session_state.profile = load_profile_dict()
+        st.session_state.profile = load_profile()
         with session_scope() as session:
             st.session_state.history = get_chat_history(session)
 
@@ -136,7 +123,7 @@ def render_profile_form() -> None:
                         target_protein_min_g=targets.target_protein_min_g,
                         target_protein_max_g=targets.target_protein_max_g,
                     )
-                st.session_state.profile = load_profile_dict()
+                st.session_state.profile = load_profile()
                 if targets.kcal_clamped_to_bmr:
                     st.warning("Deficit floored at your BMR — a full 500 would go under it.")
                 st.rerun()
@@ -208,8 +195,7 @@ def render_confirmation(pending: dict) -> None:
         )
         cols[2].markdown(f"`{item['unit']}`")
         cols[3].caption(
-            f"~{item['grams']:g}g · {item['kcal']:.0f} kcal · "
-            f"{item['protein_g']:.1f}g P · _{item['source']}_"
+            f"~{item['grams']:g}g · {item['kcal']:.0f} kcal · {item['protein_g']:.1f}g P"
         )
         keep = cols[4].checkbox("keep", value=True, key=f"keep_{index}",
                                 label_visibility="collapsed")
@@ -224,74 +210,125 @@ def render_confirmation(pending: dict) -> None:
 
     left, right, _ = st.columns([1, 1, 4])
     if left.button("Save meal", type="primary", disabled=not edited):
-        resolved = rescale_items(edited)
-        result = st.session_state.graph.invoke(
-            Command(resume={"action": "confirm", "items": resolved}), THREAD_CONFIG
-        )
-        finish_turn(result)
+        commit_meal(pending["raw_text"], edited)
     if right.button("Discard"):
-        result = st.session_state.graph.invoke(
-            Command(resume={"action": "cancel"}), THREAD_CONFIG
-        )
-        finish_turn(result)
-
-
-def rescale_items(edited: list[dict]) -> list[dict]:
-    """Re-run the nutrition lookup for any quantity the user changed.
-
-    Deliberately a fresh deterministic lookup rather than scaling the numbers in
-    the browser -- macros only ever come from the data layer.
-    """
-    rescaled: list[dict] = []
-    with session_scope() as session:
-        for item in edited:
-            match = resolve_item(session, item["food_name"], item["quantity"], item["unit"])
-            if match is None:
-                rescaled.append(item)
-                continue
-            rescaled.append({
-                **match.to_meal_item(),
-                "grams": round(match.grams, 1),
-                "source": match.source,
-            })
-    return rescaled
-
-
-def finish_turn(result: dict) -> None:
-    """Store the graph's reply (or its next interrupt) and rerun the page."""
-    interrupts = result.get("__interrupt__")
-    if interrupts:
-        # Shown but deliberately not persisted. The pending meal lives in the
-        # in-memory checkpointer, so a reload loses it -- and a summary on screen
-        # with no way to confirm it would be worse than no summary at all.
-        st.session_state.pending = interrupts[0].value["pending_meal"]
-        st.session_state.history.append(("assistant", interrupts[0].value["summary"]))
-    else:
         st.session_state.pending = None
-        reply = result.get("reply")
-        if reply:
-            remember("assistant", reply)
-        st.session_state.profile = load_profile_dict()
+        remember("assistant", "Dropped it — nothing was saved.")
+        st.rerun()
+
+
+def commit_meal(raw_text: str, edited: list[dict]) -> None:
+    """Write the approved meal, re-looking-up anything whose quantity changed.
+
+    The re-lookup is deliberate: corrected macros come from the table, never from
+    arithmetic done in the browser.
+    """
+    items = [
+        nutrition.resolve(
+            item.get("query", item["food_name"]), item["quantity"], item["unit"]
+        )
+        or item
+        for item in edited
+    ]
+    stored = [{k: v for k, v in item.items() if k != "query"} for item in items]
+    with session_scope() as session:
+        save_meal(session, raw_text, stored)
+        session.flush()
+        kcal, protein = get_daily_tally(session)
+        profile = get_profile(session)
+
+    total_kcal = sum(item["kcal"] for item in stored)
+    total_protein = sum(item["protein_g"] for item in stored)
+    lines = [f"Logged — {total_kcal:.0f} kcal, {total_protein:.1f}g protein."]
+    if profile:
+        target = profile["target_kcal"]
+        lines += [
+            "",
+            f"**Today:** {kcal:.0f} / {target} kcal ({target - kcal:+.0f})",
+            f"**Protein:** {protein:.1f} / "
+            f"{profile['target_protein_min_g']}–{profile['target_protein_max_g']} g",
+        ]
+
+    st.session_state.pending = None
+    remember("assistant", "\n".join(lines))
     st.rerun()
 
 
+def describe_progress() -> str:
+    """Today's tally against target. Pure SQL -- no model call on this path."""
+    with session_scope() as session:
+        kcal, protein = get_daily_tally(session)
+        count = len(get_meals_for_day(session))
+        profile = get_profile(session)
+
+    if profile is None:
+        return (
+            f"{count} meal(s) today: {kcal:.0f} kcal, {protein:.1f}g protein. "
+            "Fill in your profile for targets."
+        )
+
+    target_kcal = profile["target_kcal"]
+    low, high = profile["target_protein_min_g"], profile["target_protein_max_g"]
+    if protein < low:
+        note = f"{low - protein:.1f}g to reach the band"
+    elif protein <= high:
+        note = "in the band"
+    else:
+        note = f"{protein - high:.1f}g over"
+
+    return "\n".join([
+        f"**Today so far** ({count} meal{'s' if count != 1 else ''})",
+        "",
+        f"**Calories:** {kcal:.0f} / {target_kcal}  ({target_kcal - kcal:+.0f} left)",
+        f"**Protein:** {protein:.1f} / {low}–{high} g  ({note})",
+    ])
+
+
+def summarize(pending: dict) -> str:
+    """The breakdown the user is asked to approve."""
+    if not pending["items"]:
+        names = ", ".join(pending["unresolved"]) or "anything"
+        return f"I couldn't find nutrition data for {names}. Try naming it differently?"
+
+    lines = ["Here's what I got — look right?", ""]
+    for item in pending["items"]:
+        lines.append(
+            f"• **{item['food_name']}** ×{item['quantity']:g} {item['unit']}"
+            f" (~{item['grams']:g}g) — {item['kcal']:.0f} kcal,"
+            f" {item['protein_g']:.1f}g protein"
+        )
+    total_kcal = sum(item["kcal"] for item in pending["items"])
+    total_protein = sum(item["protein_g"] for item in pending["items"])
+    lines += ["", f"**Total: {total_kcal:.0f} kcal, {total_protein:.1f}g protein**"]
+    if pending["unresolved"]:
+        lines += ["", f"_Not found, so not counted: {', '.join(pending['unresolved'])}_"]
+    return "\n".join(lines)
+
+
 def handle_input(text: str) -> None:
-    """Send one user message through the graph."""
+    """One user message: classify it, then do the matching thing."""
     remember("user", text)
     try:
-        result = st.session_state.graph.invoke(
-            {
-                "messages": [HumanMessage(content=text)],
-                "user_profile": st.session_state.profile,
-                "pending_meal": None,
-            },
-            THREAD_CONFIG,
-        )
+        route = agent.classify(text)
+        if route == "log_meal":
+            resolved, unresolved = nutrition.resolve_all(agent.parse_meal(text))
+            pending = {"raw_text": text, "items": resolved, "unresolved": unresolved}
+            # Shown but not persisted: the pending meal lives only in session
+            # state, so a summary that survived a reload would have no working
+            # Save button behind it.
+            st.session_state.pending = pending
+            st.session_state.history.append(("assistant", summarize(pending)))
+        elif route == "query_progress":
+            remember("assistant", describe_progress())
+        else:
+            remember("assistant", FALLBACK_REPLY)
     except LLMUnavailableError as exc:
         remember("assistant", f"⚠️ {exc}")
-        st.rerun()
-        return
-    finish_turn(result)
+    except Exception as exc:
+        # Rate limits, timeouts and provider outages are normal on a free tier.
+        # Surface them in the chat instead of replacing the page with a traceback.
+        remember("assistant", f"⚠️ The model call failed — {type(exc).__name__}: {exc}")
+    st.rerun()
 
 
 def render_meal_row(meal: dict, key_prefix: str) -> None:
